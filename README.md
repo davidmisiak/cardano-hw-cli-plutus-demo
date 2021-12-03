@@ -87,4 +87,4 @@ UTXO_CLI_2="$(cardano-cli query utxo --address $(cat cli.addr) --testnet-magic 1
 
 # Cleanup
 
-Follow steps in [cleanup.md](./cleanup.md) to return tAda to the Faucet.
+Follow steps in [cleanup.md](./cleanup.md) to return tAda to the Faucet and clean up the files.

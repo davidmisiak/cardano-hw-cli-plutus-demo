@@ -6,110 +6,85 @@ mkValidator :: BuiltinData -> BuiltinData -> BuiltinData -> ()
 mkValidator d r _ = if d == r then () else traceError "Not Equal"
 ```
 
-We will create a transaction that sends 100 tAda from a base address to this script (with `chocolate` as output datum) and then another transaction that sends the funds back to the base address.
+We will create a transaction that sends tAda from an address controlled by a HW wallet to this script (with `chocolate` as output datum) and then another transaction that spends the funds from this script.
 
 # Setup
 
-Prepare `cardano-node` and `cardano-cli`.
+Prepare `cardano-cli` and a running `cardano-node`.
 
-Run
-```bash
-cardano-cli query protocol-parameters \
-    --out-file protocol.json \
-    --testnet-magic 1097911063
-```
+Follow steps in [setup.md](./setup.md) to prepare keys, addresses and intial UTXOs.
 
-# Generate a base address
-
-```bash
-cardano-cli address key-gen \
-    --verification-key-file payment.vkey \
-    --signing-key-file payment.skey
-
-cardano-cli stake-address key-gen \
-    --verification-key-file stake.vkey \
-    --signing-key-file stake.skey
-
-cardano-cli address build \
-    --payment-verification-key-file payment.vkey \
-    --stake-verification-key-file stake.vkey \
-    --out-file payment.addr \
-    --testnet-magic 1097911063
-```
-
-Now use the [Faucet](https://testnets.cardano.org/en/testnets/cardano/tools/faucet/) to get some tAda to your address.
-
-Verify you have received the funds (you should see one utxo):
-```bash
-cardano-cli query utxo \
-    --address $(cat payment.addr) \
-    --testnet-magic 1097911063
-
-utxo=$(cardano-cli query utxo --address $(cat payment.addr) --testnet-magic 1097911063 | awk '{w=$1} END{print w}')
-```
-
-# Build and submit the first transaction
+# Build and submit the HW transaction
 
 ```bash
 cardano-cli transaction build-raw \
     --alonzo-era \
-    --tx-in "$(echo $utxo)#0" \
-    --tx-out $(cat script.addr)+100000000 \
+    --tx-in $(echo $UTXO_HW) \
+    --tx-out $(cat script.addr)+99000000 \
     --tx-out-datum-hash-value '"chocolate"' \
-    --tx-out $(cat payment.addr)+899000000 \
     --fee 1000000 \
-    --out-file tx.raw
+    --out-file tx-hw.raw
 
-cardano-cli transaction sign \
-    --tx-body-file tx.raw \
-    --signing-key-file payment.skey \
-    --out-file tx.signed \
+cardano-hw-cli transaction transform-raw \
+    --tx-body-file tx-hw.raw \
+    --out-file tx-hw-transformed.raw
+
+cardano-hw-cli transaction sign \
+    --tx-body-file tx-hw-transformed.raw \
+    --hw-signing-file payment.hwsfile \
+    --out-file tx-hw.signed \
     --testnet-magic 1097911063
 
 cardano-cli transaction submit \
-    --tx-file tx.signed \
+    --tx-file tx-hw.signed \
     --testnet-magic 1097911063
 ```
 
-Verify that the transaction was successful (you should see one utxo):
+Verify that the transaction was successful (you should see one UTXO):
 ```bash
 cardano-cli query utxo \
     --address $(cat script.addr) \
     --testnet-magic 1097911063
 
-utxo2=$(cardano-cli query utxo --address $(cat script.addr) --testnet-magic 1097911063 | awk '{w=$1} END{print w}')
+UTXO_SCRIPT="$(cardano-cli query utxo --address $(cat script.addr) --testnet-magic 1097911063 | awk '{w=$1} END{print w}')#0"
 ```
 
-# Build and submit the second transaction
+# Build and submit the script transaction
 
 ```bash
 cardano-cli transaction build-raw \
     --alonzo-era \
-    --tx-in "$(echo $utxo2)#0" \
+    --tx-in $(echo $UTXO_SCRIPT) \
     --tx-in-script-file datum-equals-redeemer.plutus \
     --tx-in-datum-value '"chocolate"' \
     --tx-in-redeemer-value '"chocolate"' \
     --tx-in-execution-units "(1000000000, 2000000)" \
-    --tx-in-collateral "$(echo $utxo2)#1" \
-    --tx-out $(cat payment.addr)+99000000 \
+    --tx-in-collateral $(echo $UTXO_CLI) \
+    --tx-out $(cat cli.addr)+98000000 \
     --fee 1000000 \
-    --out-file tx2.raw \
+    --out-file tx-script.raw \
     --protocol-params-file protocol.json
 
 cardano-cli transaction sign \
-    --tx-body-file tx2.raw \
-    --signing-key-file payment.skey \
-    --out-file tx2.signed \
+    --tx-body-file tx-script.raw \
+    --signing-key-file payment-cli.skey \
+    --out-file tx-script.signed \
     --testnet-magic 1097911063
 
 cardano-cli transaction submit \
-    --tx-file tx2.signed \
+    --tx-file tx-script.signed \
     --testnet-magic 1097911063
 ```
 
-Verify that the transaction was successful (you should see no utxos):
+Verify that the transaction was successful (you should see no UTXOs):
 ```bash
 cardano-cli query utxo \
     --address $(cat script.addr) \
     --testnet-magic 1097911063
+
+UTXO_CLI_2="$(cardano-cli query utxo --address $(cat cli.addr) --testnet-magic 1097911063 | awk '{w=$1} END{print w}')#0"
 ```
+
+# Cleanup
+
+Follow steps in [cleanup.md](./cleanup.md) to return tAda to the Faucet.

@@ -5,3 +5,4 @@ protocol.json
 *.hwsfile
 *.raw
 *.signed
+cardano-hw-cli
